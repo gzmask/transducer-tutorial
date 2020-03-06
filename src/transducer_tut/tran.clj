@@ -119,14 +119,20 @@
 
 
 ;; Space complexity
-(->> zero-to-nine
-     (map inc); <--- intermediate step adds O(n) space 
-     (filter odd?)); <--- O(2n) at this point
+(let [xs (doall  (map inc zero-to-nine)); <--- intermediate step adds O(n) space 
+      xs (filter odd? xs)]
+  (doall xs)); <--- O(2n) at this point
 
-; wherein transducers, always O(n) space no matter the intermediate steps.
+
+;lazy-seq: let realization section be c
+(->> zero-to-nine
+     (map inc); <--- intermediate step adds O(c) space 
+     (filter odd?)); <--- O(2c) at this point
+
+; wherein transducers, always O(c) space no matter the intermediate steps.
 (sequence (comp (map inc)
                  (filter odd?))
-           zero-to-nine)
+           zero-to-nine); <--- on realization c, this will be O(c)
 
 
 ;; Make your own reducible/transducibles
@@ -188,15 +194,19 @@
 (require '[seesaw.core :as s])
 (defn -main [& args]
   (let [handler (fn [e]
-                  (a/>!! some-external-input
-                         (.getKeyChar e)))
+                  (println :yoooo!!!!)
+                  (s/alert "pressed key!")
+                  ;(a/>!! some-external-input (.getKeyChar e))
+                  )
         f (s/frame :title "whatdacat"
-                   :content (s/text :text "presskey here"
-                                    :listen [:key-typed handler
-                                             :key-pressed handler]))]
-  (-> f s/pack! s/show!)))
+                   ;:content (s/text :text "presskey here")
+                   )]
+  (a/go-loop []
+    (let [x (a/<! some-external-input)])
+    (recur))
+  (s/listen f :key-pressed handler)
+  (s/show! f)))
 
 (comment
   (-main)
   )
-
