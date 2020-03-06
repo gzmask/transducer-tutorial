@@ -119,14 +119,20 @@
 
 
 ;; Space complexity
-(->> zero-to-nine
-     (map inc); <--- intermediate step adds O(n) space 
-     (filter odd?)); <--- O(2n) at this point
+(let [xs (doall  (map inc zero-to-nine)); <--- intermediate step adds O(n) space 
+      xs (filter odd? xs)]
+  (doall xs)); <--- O(2n) at this point
 
-; wherein transducers, always O(n) space no matter the intermediate steps.
+
+;lazy-seq: let realization section be c
+(->> zero-to-nine
+     (map inc); <--- intermediate step adds O(c) space 
+     (filter odd?)); <--- O(2c) at this point
+
+; wherein transducers, always O(c) space no matter the intermediate steps.
 (sequence (comp (map inc)
                  (filter odd?))
-           zero-to-nine)
+           zero-to-nine); <--- on realization c, this will be O(c)
 
 
 ;; Make your own reducible/transducibles
