@@ -161,6 +161,7 @@
 (def g (inst/guitar))
 (comment
   (inst/guitar-strum g :C :down 0.25)
+  (inst/guitar-pick g 1 3)
   (inst/guitar-strum g :F :down 0.25)
   (inst/guitar-strum g :Gm :down 0.25)
 
