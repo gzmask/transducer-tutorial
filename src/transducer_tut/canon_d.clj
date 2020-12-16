@@ -55,42 +55,41 @@
             :G [2 2] [4 1] [4 0]
             :C])
 
-;; for async channel realtime xform, stateful transducer is needed as reducer is not provided.
+(def chord-melodies
+  {:C [[[4 0] [4 1] [2 2]]
+       [[4 3] [4 1] [4 0]]
+       [[4 0] [4 1] [2 2]]
+       [[4 3] [4 1] [4 0]]
+       [[5 0] [5 1] [5 3] [5 0] [5 1]]
+       [[2 3] [2 2] [2 3] [3 0] [3 2] [4 0] [4 1]]
+       [[0 -1]]]
+   :G [[[0 -1] [3 2] [4 0]]
+       [[2 2] [4 1] [4 0]]
+       [[0 -1] [3 2] [4 0]]
+       [[2 2] [4 1] [4 0]]
+       [[3 0] [3 2] [4 0] [4 1] [4 3 [5 0] [5 1]]]
+       [[3 2] [4 0] [4 1] [4 3] [5 0] [5 1] [5 3]]]
+   :Em [[[5 0] [5 3] [5 5]]
+        [[5 0] [5 3] [5 5]]
+        [[3 2] [3 0] [2 3] [3 0] [4 1] [4 0] [4 1]]]
+   :F [[[5 0] [4 3] [5 1]]
+       [[3 0] [2 2] [4 1]]
+       [[5 0] [4 3] [5 1]]
+       [[3 0] [2 2] [4 1]]
+       [[4 1] [4 0] [3 2] [3 0] [2 3]]
+       [[4 1] [4 0] [4 1] [4 0] [4 1]]]
+   :Am [[[4 0] [4 1] [5 0]]
+        [[4 0] [4 1] [5 0]]
+        [[4 1] [4 3] [5 0] [2 2] [2 3]]]})
+
+;; for some application types, stateful transducer is needed as reducer is not provided.
 (defn reactive-melody-xf [rf]
-  (let [state (volatile! {:time 0
-                          :C [[[4 0] [4 1] [2 2]]
-                              [[4 3] [4 1] [4 0]]
-                              [[4 0] [4 1] [2 2]]
-                              [[4 3] [4 1] [4 0]]
-                              [[5 0] [5 1] [5 3] [5 0] [5 1]]
-                              [[2 3] [2 2] [2 3] [3 0] [3 2] [4 0] [4 1]]
-                              [[0 -1]]
-                              ]
-                          :G [[[0 -1] [3 2] [4 0]]
-                              [[2 2] [4 1] [4 0]]
-                              [[0 -1] [3 2] [4 0]]
-                              [[2 2] [4 1] [4 0]]
-                              [[3 0] [3 2] [4 0] [4 1] [4 3 [5 0] [5 1]]]
-                              [[3 2] [4 0] [4 1] [4 3] [5 0] [5 1] [5 3]]
-                              ]
-                          :Em [[[5 0] [5 3] [5 5]]
-                               [[5 0] [5 3] [5 5]]
-                               [[3 2] [3 0] [2 3] [3 0] [4 1] [4 0] [4 1]]
-                               ]
-                          :F [[[5 0] [4 3] [5 1]]
-                              [[3 0] [2 2] [4 1]]
-                              [[5 0] [4 3] [5 1]]
-                              [[3 0] [2 2] [4 1]]
-                              [[4 1] [4 0] [3 2] [3 0] [2 3]]
-                              [[4 1] [4 0] [4 1] [4 0] [4 1]]
-                              ]
-                          :Am [[[4 0] [4 1] [5 0]]
-                               [[4 0] [4 1] [5 0]]
-                               [[4 1] [4 3] [5 0] [2 2] [2 3]]
-                               ]})]
+  (let [state (volatile! (merge chord-melodies
+                                {:time 0}
+                                ))]
     (fn
       ([] (rf))
-      ([a] (rf a))
+      ([a] (println "aggregation is:" a) (rf a))
       ([a e]
        (let [melody (first (e @state))
              note-time (/ (* 3 tick-time) (count melody))]
@@ -101,12 +100,15 @@
                                e (rest (e @state))))
          (rf a e))))))
 
+(sequence reactive-melody-xf [:C])
+(transduce reactive-melody-xf conj [:C])
 (sequence reactive-melody-xf [:C :G :Am :Em :F :C :F :G
                               :C :G :Am :Em :F :C :F :G
                               :C :G :Am :Em :F :C :F :G
                               :C])
 
 
+;; if we exceed buffer size, main repl thread blocks.
 (def chord-channel (a/chan 100 reactive-melody-xf))
 
 (a/>!! chord-channel :C)
@@ -114,8 +116,63 @@
 (a/>!! chord-channel :Am)
 (a/>!! chord-channel :Em)
 (a/>!! chord-channel :F)
+(a/go
+  (a/close! chord-channel))
 
-;;TODO add go block consummer to make sure realtimeness
+(defn realtime-melody-xf [rf]
+  (let [state (volatile! chord-melodies)]
+    (fn
+      ([] (rf))
+      ([a] (rf a))
+      ([a e]
+       (let [melody (first (e @state))
+             note-time (/ (* 3 tick-time) (count melody))]
+         (play-chord e 0)
+         (dorun (map-indexed #(play-melody %2 (+ (* (inc %1) note-time))) melody))
+         (vreset! state (assoc @state
+                               e (rest (e @state))))
+         (rf a e))))))
+
+(def realtime-chord-channel (a/chan 100 realtime-melody-xf))
+
+(def realtime-go-block
+  (a/go-loop []
+    (a/<! realtime-chord-channel)
+    (recur)))
+(a/>!! realtime-chord-channel :C)
+(a/>!! realtime-chord-channel :G)
+(a/>!! realtime-chord-channel :Am)
+(a/>!! realtime-chord-channel :Em)
+(a/>!! realtime-chord-channel :F)
+(a/go
+  (a/close! realtime-go-block)
+  (a/close! realtime-chord-channel))
+
+(defn pure-melody-xf [rf]
+  (fn
+    ([] (rf))
+    ([a] (rf a))
+    ([a e]
+     (let [melody (first (e a))
+           note-time (/ (* 3 tick-time) (count melody))]
+       (play-chord e 0)
+       (dorun (map-indexed #(play-melody %2 (+ (* (inc %1) note-time))) melody))
+       (rf (assoc a e (rest (e a))) e)))))
+(def pure-chord-channel (a/chan 100))
+(def popping-pure-chord-channel
+  (a/transduce pure-melody-xf
+               (completing (fn [a e] a))
+               chord-melodies
+               pure-chord-channel))
+
+(a/>!! pure-chord-channel :C)
+(a/>!! pure-chord-channel :G)
+(a/>!! pure-chord-channel :Am)
+(a/>!! pure-chord-channel :Em)
+(a/>!! pure-chord-channel :F)
+(a/go
+  (a/close! pure-chord-channel)
+  (a/close! popping-pure-chord-channel)
+  (a/<! popping-pure-chord-channel))
 
 ;;TODO random melody transducer
-
