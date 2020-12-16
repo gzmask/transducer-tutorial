@@ -22,7 +22,7 @@
 (defn chord-xf [rf]
   (fn
     ([] (rf)) ; never used, just to line up with 0-arity reducers.
-    ([aggregation] (rf aggregation)) ; in case init aggregation value is provided.
+    ([aggregation] (rf aggregation)) ; final aggregation value is passed.
     ([aggregation element]
      (when (keyword? element)
        (play-chord element (+ tick-time (:time aggregation))))
@@ -55,55 +55,67 @@
             :G [2 2] [4 1] [4 0]
             :C])
 
+;; for async channel realtime xform, stateful transducer is needed as reducer is not provided.
 (defn reactive-melody-xf [rf]
-  (fn
-    ([] (rf))
-    ([a] (rf a))
-    ([a e]
-     (let [melody (first (e a))
-           note-time (/ (* 3 tick-time) (count melody))]
-       (dorun (map-indexed #(play-melody %2 (+ (* (inc %1) note-time) (:time a))) melody))
-       (rf (assoc a
-                  :time (+ (:time a)
-                           (* 3 tick-time))
-                  e (rest (e a)))
-           e)))))
+  (let [state (volatile! {:time 0
+                          :C [[[4 0] [4 1] [2 2]]
+                              [[4 3] [4 1] [4 0]]
+                              [[4 0] [4 1] [2 2]]
+                              [[4 3] [4 1] [4 0]]
+                              [[5 0] [5 1] [5 3] [5 0] [5 1]]
+                              [[2 3] [2 2] [2 3] [3 0] [3 2] [4 0] [4 1]]
+                              [[0 -1]]
+                              ]
+                          :G [[[0 -1] [3 2] [4 0]]
+                              [[2 2] [4 1] [4 0]]
+                              [[0 -1] [3 2] [4 0]]
+                              [[2 2] [4 1] [4 0]]
+                              [[3 0] [3 2] [4 0] [4 1] [4 3 [5 0] [5 1]]]
+                              [[3 2] [4 0] [4 1] [4 3] [5 0] [5 1] [5 3]]
+                              ]
+                          :Em [[[5 0] [5 3] [5 5]]
+                               [[5 0] [5 3] [5 5]]
+                               [[3 2] [3 0] [2 3] [3 0] [4 1] [4 0] [4 1]]
+                               ]
+                          :F [[[5 0] [4 3] [5 1]]
+                              [[3 0] [2 2] [4 1]]
+                              [[5 0] [4 3] [5 1]]
+                              [[3 0] [2 2] [4 1]]
+                              [[4 1] [4 0] [3 2] [3 0] [2 3]]
+                              [[4 1] [4 0] [4 1] [4 0] [4 1]]
+                              ]
+                          :Am [[[4 0] [4 1] [5 0]]
+                               [[4 0] [4 1] [5 0]]
+                               [[4 1] [4 3] [5 0] [2 2] [2 3]]
+                               ]})]
+    (fn
+      ([] (rf))
+      ([a] (rf a))
+      ([a e]
+       (let [melody (first (e @state))
+             note-time (/ (* 3 tick-time) (count melody))]
+         (play-chord e (:time @state))
+         (dorun (map-indexed #(play-melody %2 (+ (* (inc %1) note-time) (:time @state))) melody))
+         (vreset! state (assoc @state
+                               :time (+ (:time @state) (* 4 tick-time))
+                               e (rest (e @state))))
+         (rf a e))))))
 
-(transduce (comp chord-xf reactive-melody-xf)
-           (completing (fn [a e] a)
-                       (fn [a] (str (long (/ (:time a) 1000)) " seconds has been played.")))
-           {:time 0
-            :C [[[4 0] [4 1] [2 2]]
-                [[4 3] [4 1] [4 0]]
-                [[4 0] [4 1] [2 2]]
-                [[4 3] [4 1] [4 0]]
-                [[5 0] [5 1] [5 3] [5 0] [5 1]]
-                [[2 3] [2 2] [2 3] [3 0] [3 2] [4 0] [4 1]]
-                ]
-            :G [[[0 -1] [3 2] [4 0]]
-                [[2 2] [4 1] [4 0]]
-                [[0 -1] [3 2] [4 0]]
-                [[2 2] [4 1] [4 0]]
-                [[3 0] [3 2] [4 0] [4 1] [4 3 [5 0] [5 1]]]
-                [[3 2] [4 0] [4 1] [4 3] [5 0] [5 1] [5 3]]
-                ]
-            :Em [[[5 0] [5 3] [5 5]]
-                 [[5 0] [5 3] [5 5]]
-                 [[3 2] [3 0] [2 3] [3 0] [4 1] [4 0] [4 1]]
-                 ]
-            :F [[[5 0] [4 3] [5 1]]
-                [[3 0] [2 2] [4 1]]
-                [[5 0] [4 3] [5 1]]
-                [[3 0] [2 2] [4 1]]
-                [[4 1] [4 0] [3 2] [3 0] [2 3]]
-                [[4 1] [4 0] [4 1] [4 0] [4 1]]
-                ]
-            :Am [[[4 0] [4 1] [5 0]]
-                 [[4 0] [4 1] [5 0]]
-                 [[4 1] [4 3] [5 0] [2 2] [2 3]]
-                 ]}
-           [:C :G :Am :Em :F :C :F :G
-            :C :G :Am :Em :F :C :F :G
-            :C :G :Am :Em :F :C :F :G
-            ])
+(sequence reactive-melody-xf [:C :G :Am :Em :F :C :F :G
+                              :C :G :Am :Em :F :C :F :G
+                              :C :G :Am :Em :F :C :F :G
+                              :C])
+
+
+(def chord-channel (a/chan 100 reactive-melody-xf))
+
+(a/>!! chord-channel :C)
+(a/>!! chord-channel :G)
+(a/>!! chord-channel :Am)
+(a/>!! chord-channel :Em)
+(a/>!! chord-channel :F)
+
+;;TODO add go block consummer to make sure realtimeness
+
+;;TODO random melody transducer
 
