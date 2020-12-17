@@ -3,8 +3,17 @@
             [overtone.synth.stringed :as inst]
             [clojure.core.async :as a]))
 
-(o/boot-internal-server)
-(o/kill-server)
+;; set ~/.overtone/config.clj :server :external
+;; set s.options.maxLogins = 50 in SC
+;;remember to use interal mic and set sample rate in System Preferences > Audio/MIDI
+(comment
+  (o/connect-external-server)
+  (o/server-status)
+  )
+
+(comment
+  (o/boot-internal-server)
+  (o/kill-server))
 
 (def g (inst/guitar))
 
@@ -176,3 +185,4 @@
   (a/<! popping-pure-chord-channel))
 
 ;;TODO random melody transducer
+
