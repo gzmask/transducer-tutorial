@@ -1,14 +1,20 @@
 (ns transducer-tut.canon-d
   (:require [overtone.core :as o]
             [overtone.synth.stringed :as inst]
+            [overtone.config.store :as oconf]
             [clojure.core.async :as a]))
 
 ;; set ~/.overtone/config.clj :server :external
+;; set s.options.bindAddress = "0.0.0.0" in SC
 ;; set s.options.maxLogins = 50 in SC
 ;;remember to use interal mic and set sample rate in System Preferences > Audio/MIDI
 (comment
+  (swap! oconf/live-config assoc :os :windows)
+  (swap! oconf/live-config assoc :os :mac)
   (o/connect-external-server)
+  (o/connect-external-server "192.168.50.102" 57110)
   (o/server-status)
+  (o/stop)
   )
 
 (comment
