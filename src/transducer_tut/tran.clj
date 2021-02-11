@@ -210,4 +210,7 @@
 
 (comment
   (-main)
+  (a/go-loop []
+    (let [x (a/<! some-external-input)])
+    (recur))
   )
