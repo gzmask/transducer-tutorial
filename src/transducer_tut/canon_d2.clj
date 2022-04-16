@@ -6,6 +6,7 @@
 
 (comment
   (o/connect-external-server)
+  (o/boot-internal-server)
   (o/server-status)
   (o/stop-all)
   (o/kill-server)
@@ -36,12 +37,13 @@
 
 (defn round [rf a e]
   (let [previous-notes (filter #(= (count %) 2) a)
+        offset 5
         c (count previous-notes)]
-    (if (< c 8)
+    (if (< c offset)
       (rf a e)
       (let [current-note-played (rf a e)
-            previous-note (nth previous-notes (- c 8))
-            previous-note (update previous-note 1 (partial + 5))
+            [string-index fret-index :as previous-note] (nth previous-notes (- c offset))
+            previous-note [(+ 2 string-index) (+ 2 fret-index)]
             delay-time  (+ (rand-nth [600 700 500]) (.getTime (new java.util.Date)))
             round-note (conj previous-note delay-time)]
         (rf current-note-played round-note)))))
@@ -54,19 +56,32 @@
   (a/transduce (comp string-translate-xf round-xf guitar-xf) conj [] input-channel))
 (a/go (println :played (a/<! output-channel)))
 
-(a/>!! input-channel [5 3])
-(a/>!! input-channel [6 3])
-(a/>!! input-channel [5 0])
-(a/>!! input-channel [6 0])
-(a/>!! input-channel [6 1])
-(a/>!! input-channel [5 3])
-(a/>!! input-channel [6 1])
-(a/>!! input-channel [6 3])
 (a/>!! input-channel :C)
 (a/>!! input-channel :G)
 (a/>!! input-channel :Am)
 (a/>!! input-channel :Em)
 (a/>!! input-channel :F)
+
+;(take 2 (cycle [1 2 3]))
+;(drop 2 (cycle [1 2 3]))
+
+(def melody (atom (cycle [[5 3]
+                          [6 3]
+                          [5 0]
+                          [6 0]
+                          [6 1]
+                          [5 3]
+                          [6 1]
+                          [6 3]])))
+(defn next-note []
+  (a/>!! input-channel (first @melody))
+  (swap! melody rest)
+  nil)
+
+
+
+(next-note)
+
 
 (a/go (a/close! input-channel))
 
