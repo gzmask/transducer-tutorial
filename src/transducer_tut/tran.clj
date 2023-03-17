@@ -137,18 +137,21 @@
 
 ;; Make your own reducible/transducibles
 (defn gen
-  "An generator that constantly produces the input element."
+  "An generator that constantly produces the input element in random batches."
   [e]
   (reify
     clojure.lang.IReduceInit
     (reduce [_ rf init]
-      (loop [aggregation (or init (rf))
-             ret (rf aggregation e)]
-        (if (reduced? ret); <--- early termination
-          @ret
-          (recur e (rf ret e)))))))
+      (loop [generated-result (repeat (rand-int 10) e)
+             aggregation (or init (rf))]
+        (if (reduced? aggregation); <--- early termination
+          @aggregation
+          (let [next-generated-result (repeat (rand-int 10)e)]
+            (recur next-generated-result
+                   (rf aggregation generated-result))))))))
 
-(transduce (take 15) conj (gen :SAPConcur))
+(transduce (take 3) conj (gen :SAPConcur))
+
 
 ;; Use case Example
 
